@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "198705277942",
+    "project_id": "internal-testing-apps",
+    "storage_bucket": "internal-testing-apps.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:198705277942:android:0d10fb27684d10e7ecb5d7",
+        "android_client_info": {
+          "package_name": "com.minda.bledatalogger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUIHLUN1S55UC0twdaXDIMpNL7gV2j8WA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
