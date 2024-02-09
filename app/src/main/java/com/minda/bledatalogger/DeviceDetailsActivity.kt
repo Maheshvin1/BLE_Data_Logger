@@ -1,5 +1,9 @@
 package com.minda.bledatalogger
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Environment
@@ -33,11 +37,24 @@ class DeviceDetailsActivity : AppCompatActivity(), View.OnClickListener {
     private var frontDeviceAddress: String = ""
     private var rearDeviceAddress: String = ""
 
+    private val broadcastReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "device_data_details") {
+                val deviceData = intent.getStringExtra("device_data")
+                val splitData = deviceData?.split("-")
+                val deviceValue = splitData?.get(1)
+                val deviceAddress = deviceData?.split("-")?.get(0) ?: ""
+            }
+        }
+    }
+
     companion object {
         private const val FILE_MAX_SIZE = 100 * 1024
         private const val FILE_NAME = "Data_Logs.txt"
         private var device_Data = MainActivity.deviceData
         private var deviceAddress = MainActivity.deviceAddress
+        const val CONNECTED_DEVICES = "connected_devices"
+
     }
 
    // var convertedData = device_Data?.map {it.toInt() and 0xFF}
@@ -58,11 +75,22 @@ class DeviceDetailsActivity : AppCompatActivity(), View.OnClickListener {
 
         dataListView = findViewById(R.id.dataListView)
         deviceListAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1)
-        val selectedDevice = intent.getStringExtra("selectedDevices")
-
+        val selectedDevice = intent.getStringArrayListExtra("deviceList")
+        selectedDevice?.let {
+            deviceListAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, it)
+            dataListView.adapter = deviceListAdapter
+        }
         //val convert = device_Data?.joinToString(separator = " ") { byte -> String.format("%2X", byte)}
-        deviceListAdapter.add(selectedDevice)
-        dataListView.adapter = deviceListAdapter
+//        deviceListAdapter.add(selectedDevice)
+//        dataListView.adapter = deviceListAdapter
+
+
+        val intentFilter = IntentFilter("device_data_details")
+        registerReceiver(broadcastReceiver, intentFilter)
+
+//        val intentFilter = IntentFilter("device_data_details")
+//        //intentFilter.addAction("device_data_details")
+//        registerReceiver(broadcastReceiver, intentFilter)
 
         listener()
     }
@@ -83,6 +111,17 @@ class DeviceDetailsActivity : AppCompatActivity(), View.OnClickListener {
                 }
             }
         }
+    }
+
+//    override fun onResume() {
+//        super.onResume()
+//        val intentFilter = IntentFilter("device_data_details")
+//        registerReceiver(broadcastReceiver, intentFilter)
+//    }
+
+    override fun onPause() {
+        super.onPause()
+//        unregisterReceiver(broadcastReceiver)
     }
 
     private fun onRefresh() {
@@ -261,7 +300,7 @@ class DeviceDetailsActivity : AppCompatActivity(), View.OnClickListener {
             Toast.makeText(this, "Data Exported", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             //e.printStackTrace()
-            Toast.makeText(this, "$e.message", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "List is Empty", Toast.LENGTH_SHORT).show()
         }
     }
     private fun truncateFile(directory: File, file: File) {
@@ -272,5 +311,10 @@ class DeviceDetailsActivity : AppCompatActivity(), View.OnClickListener {
         writer.write(newData)
         writer.flush()
         writer.close()
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(broadcastReceiver)
+        super.onDestroy()
     }
 }

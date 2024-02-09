@@ -3,6 +3,7 @@ package com.minda.bledatalogger
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -26,6 +27,9 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.contains
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
 
@@ -48,6 +52,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private var isScanning = false
 
     private var selectedDeviceIndex: Int = -1
+    private val selectedDeviceIndices: MutableList<Int> = mutableListOf()
+    val selectedDevices: MutableList<String> = mutableListOf()
+    private val deviceDataMap: MutableMap<String?, ByteArray?> = mutableMapOf()
 
     companion object {
         var deviceData: ByteArray? = null
@@ -116,11 +123,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private fun setupItemClickListener() {
         deviceListView.setOnItemClickListener { _, _, position, _ ->
             if (deviceListView.isItemChecked(position)) {
-                selectedDeviceIndex = position
+                selectedDeviceIndices.add(position)
                 readButton.isEnabled = true
             }
             else {
-                selectedDeviceIndex = -1
+                //selectedDeviceIndex = -1
+                selectedDeviceIndices.remove(position)
                 readButton.isEnabled = false
             }
         }
@@ -132,11 +140,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 R.id.scanButton -> {
                     when(isBluetoothOn()) {
                         true -> {isScanningDevices()}
-                        false -> {enableBluetooth(this)}
+                        false -> {enableBluetooth()}
                     }
                 }
                 R.id.readButton -> {
-                    readDataFromSelectedDevice()
+                    startIntentFun()
                 }
             }
         }
@@ -149,7 +157,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         return true
     }
 
-    private fun enableBluetooth(context: Context) {
+    private fun enableBluetooth() {
         if (!bluetoothAdapter.isEnabled) {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
 
@@ -206,10 +214,14 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     //arrayAdapter.add("$deviceName - $deviceAddress")
                 //}
 
-                if (!devicesArrayList.any { it.equals("$deviceName - $deviceAddress", ignoreCase = true) }) {
-                    arrayAdapter.add("$deviceName - $deviceAddress")
+                deviceDataMap[deviceAddress] = deviceData
 
+                result?.let {
+                    if (!devicesArrayList.any { it.equals("$deviceName - $deviceAddress", ignoreCase = true) }) {
+                        arrayAdapter.add("$deviceName - $deviceAddress")
+                    }
                 }
+//                arrayAdapter.notifyDataSetChanged()
 
 //                arrayAdapter.add(deviceName)
 
@@ -271,14 +283,17 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             if ((ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) || (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)) {
                 ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.BLUETOOTH_SCAN, "android.permission.BLUETOOTH_SCAN"), PERMISSION_REQUEST_CODE)
             } else {
-                bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
 
-                bluetoothLeScanner.startScan(scanFilters, settings, leScanCallback)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
+                    bluetoothLeScanner.startScan(scanFilters, settings, leScanCallback)
+                }
                 //scanHandler.postDelayed(scanRunnable, SCAN_PERIOD) //stop scan after some period of time(seconds)
             }
-        } else {
-            stopScan()
         }
+//        else {
+//            stopScan()
+//        }
     }
 
     private fun stopScan() {
@@ -289,18 +304,55 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         if (progressBar.visibility == View.VISIBLE) { progressBar.visibility = View.GONE }
     }
 
+    private fun startIntentFun() {
+        var selectedDevice: String? = ""
+        var data: String? = ""
+
+        selectedDevices.clear()
+
+        for (index in selectedDeviceIndices) {
+            selectedDevice = devicesArrayList[index].substringAfterLast(" - ")
+            data = deviceDataMap[deviceAddress]?.joinToString(separator = " ") { byte -> String.format("%2X", byte)}
+
+            selectedDevices.add("$selectedDevice - $data")
+        }
+
+        val broadcastIntent = Intent("device_data_details")
+        broadcastIntent.putExtra("device_data", selectedDevice + "-" + data.toString())
+        sendBroadcast(broadcastIntent)
+
+        val intent = Intent(this@MainActivity, DeviceDetailsActivity::class.java)
+        intent.putStringArrayListExtra("deviceList", ArrayList(selectedDevices))
+//        intent.putExtra("device_data", selectedDevice+"-"+data.toString())
+
+        startActivity(intent)
+
+
+    }
+
     private fun readDataFromSelectedDevice() {
-        if (selectedDeviceIndex != -1) {
-            val selectedDeviceData = devicesArrayList[selectedDeviceIndex]
-            print("slected Device data $selectedDeviceData")
+        val intent1 = Intent(this@MainActivity, DeviceDetailsActivity::class.java)
+        var selectedDevice: String? = ""
+        var data: String? = ""
+        val intent = Intent("device_data_details")
 
-            val data = deviceData?.joinToString(separator = " ") { byte -> String.format("%2X", byte)}
+        for (index in selectedDeviceIndices) {
+            selectedDevice = devicesArrayList[index]
+            val device = bluetoothAdapter.getRemoteDevice(deviceAddress)
+            val deviceAddress = selectedDevice.substringAfterLast(" - ")
 
-            val intent = Intent(this@MainActivity, DeviceDetailsActivity::class.java)
-            intent.putExtra("selectedDevices", "$selectedDeviceData - $data")
-            startActivity(intent)
+            data = deviceDataMap[deviceAddress]?.joinToString(separator = " ") { byte -> String.format("%2X", byte)}
+
+
+//            intent.putExtra("device_data", "$selectedDevice-$data")
+//            intent.putParcelableArrayListExtra(DeviceDetailsActivity.CONNECTED_DEVICES, ArrayList(selectedDevices))
+//
+//            intent1.putExtra("selectedDevices", "$selectedDevice - $data")
+//            intent.getStringExtra("selectedDevices")?.let { Log.i("selected Device data", it) }
 
         }
+//        sendBroadcast(intent)
+//        startActivity(intent1)
     }
 
     override fun onResume() {
@@ -317,10 +369,10 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        stopScan()
-    }
+//    override fun onPause() {
+//        super.onPause()
+//        stopScan()
+//    }
 
     override fun onDestroy() {
         super.onDestroy()
